@@ -4,41 +4,37 @@
 #include <pthread.h>
 #include <unistd.h>
     
-pthread_mutex_t mutex;  //protect service from the same CPU from other threads
-sem_t cpu, pro;         //CPU n Processes ready or not
+sem_t cpu, pro, mut;         //CPU n Processes ready or not
 int n, x, *p, wait=0, done=0;
 
 void *CPU() {   
     for (int i = 0; i < n; i++) {
-        //try to get a process or sleep if there is none
-        sem_wait(&pro);
-        //wake up CPU to process
-        sem_post(&cpu); 
-
-        pthread_mutex_lock(&mutex);     //Enters CS
+        sem_wait(&pro); //try to get a process or sleep if there is none
+        sem_wait(&mut); //Enters CS
+        sem_post(&cpu); //wake up CPU to process
+        sem_post(&mut); //Exits CS
+        //CPU is processing
         usleep((rand() % 51)*1000);
         wait--; done++;
-        pthread_mutex_unlock(&mutex);   //Exits CS
-
         printf("[pid = %d] was processed.\n", x);
         printf("Waiting : %d\tDone : %d\n", wait, done);
     }
 }
 
 void *process(void *idp) {
+    sem_wait(&mut); //Enters CS
     printf("[pid = %d] is waiting.\n", *((int *)idp));
-    //set the process ready to be processed
-    sem_post(&pro);
+    sem_post(&pro); //set the process ready to be processed
     wait++;
-    //wait for the CPU to get ready 
-    sem_wait(&cpu);
+    sem_post(&mut); //Exits CS
+    sem_wait(&cpu); //wait for the CPU to get ready 
     printf("[pid = %d] is being processed.\n", *((int *)idp)); 
     x = *((int *)idp);
 }
 void *make_process(){
     for (int i = 0; i < n; i++) {
         pthread_t pid;
-        pthread_create(&pid, NULL, process, &p[i]);  
+        pthread_create(&pid, NULL, process, &p[i]);
     }
 }
 
@@ -52,7 +48,7 @@ int main(){
     }
     pthread_t pro_id;
     pthread_t cpu_id;
-    pthread_mutex_init(&mutex, NULL);
+    sem_init(&mut, 0, 1);
     sem_init(&pro, 0, 0);
     sem_init(&cpu, 0, 0);
     p = malloc(n*sizeof(int));
@@ -64,7 +60,7 @@ int main(){
     pthread_join(cpu_id, NULL);
     pthread_join(pro_id, NULL);
  
-    pthread_mutex_destroy(&mutex);
+    sem_destroy(&mut);
     sem_destroy(&cpu);
     sem_destroy(&pro);
     return 0;  	
